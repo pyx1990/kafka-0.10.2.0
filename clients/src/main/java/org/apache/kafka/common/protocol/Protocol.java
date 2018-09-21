@@ -45,6 +45,10 @@ public class Protocol {
                                                            new Field("client_id",
                                                                      NULLABLE_STRING,
                                                                      "A user specified identifier for the client making the request.",
+                                                                     ""),
+                                                           new Field("client_version",
+                                                                     NULLABLE_STRING,
+                                                                     "A specified client version for making the request.",
                                                                      ""));
 
     public static final Schema RESPONSE_HEADER = new Schema(new Field("correlation_id",
