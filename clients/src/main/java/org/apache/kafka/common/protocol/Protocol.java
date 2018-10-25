@@ -46,6 +46,19 @@ public class Protocol {
                                                                      NULLABLE_STRING,
                                                                      "A user specified identifier for the client making the request.",
                                                                      ""));
+    public static final Schema REQUEST_SECURITY_HEADER = new Schema(new Field("api_key", INT16, "The id of the request type."),
+                                                                    new Field("api_version", INT16, "The version of the API."),
+                                                                    new Field("correlation_id",
+                                                                        INT32,
+                                                                        "A user-supplied integer value that will be passed back with the response"),
+                                                                    new Field("client_id",
+                                                                        NULLABLE_STRING,
+                                                                        "A user specified identifier for the client making the request.",
+                                                                        ""),
+                                                                    new Field("client_version",
+                                                                        NULLABLE_STRING,
+                                                                        "A specified client version for making the request.",
+                                                                        "cmss-client"));
 
     public static final Schema RESPONSE_HEADER = new Schema(new Field("correlation_id",
                                                                       INT32,
