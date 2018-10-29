@@ -138,8 +138,9 @@ public class RequestHeader extends AbstractRequestResponse {
         String brokerCfg = "config/server.properties";
         URL url = getDefaultClassLoader().getResource(brokerCfg);
         if (url == null) {
-            // Consider as client side if 'config/server.properties' not found in current thread classloader (default: use security request head).
-            log.warn(String.format("Classpath resource %s does not exist, it can be ignored as client side which consider using security request header.", brokerCfg));
+            String expectedResPath = getDefaultClassLoader().getResource("").getPath() + brokerCfg;
+            // Consider as client side if 'config/server.properties' not found in current thread classloader (default: use security request header).
+            log.warn(String.format("Classpath resource %s does not exist, it can be ignored as client side which consider using security request header.", expectedResPath));
             return true;
         }
         String brokerCfgPath = url.getPath();
