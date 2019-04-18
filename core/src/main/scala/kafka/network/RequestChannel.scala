@@ -79,8 +79,17 @@ object RequestChannel extends Logging {
         buffer.rewind
         try RequestHeader.parse(buffer)
         catch {
-          case ex: Throwable =>
-            throw new InvalidRequestException(s"Error parsing request header. Our best guess of the apiKey is: $requestId", ex)
+          /*case ex: Throwable =>
+            throw new InvalidRequestException(s"Error parsing request header. Our best guess of the apiKey is: $requestId", ex)*/
+          case ex: Exception =>
+            // For unsupported version of cmss client, create a dummy header to trigger a dummy request
+            if (ex.getMessage.contains("Error reading field 'client_version'")) {
+              // apiVersion -1 < MIN_VERSIONS[apiKey] which is non-negative
+              warn("Invalid client version due to exception: " + ex.getMessage)
+              new RequestHeader(ApiKeys.API_VERSIONS.id, -1, "mockCmssClient", 0)
+            } else {
+              throw new InvalidRequestException(s"Error parsing request header. Our best guess of the apiKey is: $requestId", ex)
+            }
         }
       } else
         null
