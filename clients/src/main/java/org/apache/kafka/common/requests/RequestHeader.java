@@ -15,6 +15,7 @@ package org.apache.kafka.common.requests;
 import static org.apache.kafka.common.protocol.Protocol.REQUEST_HEADER;
 import static org.apache.kafka.common.protocol.Protocol.REQUEST_SECURITY_HEADER;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -24,6 +25,7 @@ import java.util.Properties;
 import org.apache.kafka.common.protocol.Protocol;
 import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.common.protocol.types.Struct;
+import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +37,10 @@ public class RequestHeader extends AbstractRequestResponse {
     private static final Logger log = LoggerFactory.getLogger(RequestHeader.class);
 
     private static final String VerifyClientVersionEnableProp = "verify.client.version.enable";
-    private static boolean security = enableSecurity();
+    private static boolean security = enableVerify();
+
+    private static final String DEFAULT_KAFKA_HOME = "/usr/lib/kafka";
+    private static final String DEFAULT_CONFIG_PATH = "config/server.properties";
 
     private static final Field API_KEY_FIELD = getField("api_key");
     private static final Field API_VERSION_FIELD = getField("api_version");
@@ -132,6 +137,40 @@ public class RequestHeader extends AbstractRequestResponse {
             return new RequestHeader(Protocol.REQUEST_SECURITY_HEADER.read(buffer));
         else
             return new RequestHeader(Protocol.REQUEST_HEADER.read(buffer));
+    }
+
+    public static boolean isSecure() {
+        return security;
+    }
+
+    public static boolean enableVerify() {
+        String kafkaHome;
+        String envKafkaHome = System.getenv("KAFKA_HOME");
+        if (envKafkaHome != null) {
+            kafkaHome = envKafkaHome;
+        } else {
+            log.info("KAFKA_HOME is not set, use the default path {}.", DEFAULT_KAFKA_HOME);
+            kafkaHome = DEFAULT_KAFKA_HOME;
+        }
+        String brokerConfigPath = kafkaHome.endsWith("/")
+            ? kafkaHome + DEFAULT_CONFIG_PATH
+            : kafkaHome + "/" + DEFAULT_CONFIG_PATH;
+
+        if (!new File(brokerConfigPath).exists()) {
+            log.warn("Broker config file {} does not exist, this warning can be ignored on the client side (security request headers are used by default).", brokerConfigPath);
+            return true;
+        }
+
+        log.info("Broker config file path is {}, if this file exists on the client side, make sure it is consistent with the server configuration.", brokerConfigPath);
+        Properties props;
+        try {
+            props = Utils.loadProps(brokerConfigPath);
+            String security = props.getProperty(VerifyClientVersionEnableProp);
+            log.info("Broker property {} is: {}.", VerifyClientVersionEnableProp, security);
+            return Boolean.parseBoolean(security);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(e.getMessage());
+        }
     }
 
     public static boolean enableSecurity() {
