@@ -15,7 +15,9 @@ package org.apache.kafka.common.requests;
 import static org.apache.kafka.common.protocol.Protocol.REQUEST_HEADER;
 import static org.apache.kafka.common.protocol.Protocol.REQUEST_SECURITY_HEADER;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.util.Properties;
@@ -35,7 +37,10 @@ public class RequestHeader extends AbstractRequestResponse {
     private static final Logger log = LoggerFactory.getLogger(RequestHeader.class);
 
     private static final String VerifyClientVersionEnableProp = "verify.client.version.enable";
-    private static boolean security = enableSecurity();
+    private static boolean security = enableVerify();
+
+    private static final String DEFAULT_KAFKA_HOME = "/usr/lib/kafka";
+    private static final String DEFAULT_CONFIG_PATH = "config/server.properties";
 
     private static final Field API_KEY_FIELD = getField("api_key");
     private static final Field API_VERSION_FIELD = getField("api_version");
@@ -134,39 +139,102 @@ public class RequestHeader extends AbstractRequestResponse {
             return new RequestHeader(Protocol.REQUEST_HEADER.read(buffer));
     }
 
+    public static boolean isSecure() {
+        return security;
+    }
+
+    public static boolean enableVerify() {
+        String kafkaHome;
+        String envKafkaHome = System.getenv("KAFKA_HOME");
+        if (envKafkaHome != null) {
+            kafkaHome = envKafkaHome;
+        } else {
+            log.info("KAFKA_HOME is not set, use the default path {}.", DEFAULT_KAFKA_HOME);
+            kafkaHome = DEFAULT_KAFKA_HOME;
+        }
+        String brokerConfigPath = kafkaHome.endsWith("/")
+            ? kafkaHome + DEFAULT_CONFIG_PATH
+            : kafkaHome + "/" + DEFAULT_CONFIG_PATH;
+
+        if (!new File(brokerConfigPath).exists()) {
+            log.warn("Broker config file {} does not exist, this warning can be ignored on the client side (security request headers are used by default).", brokerConfigPath);
+            return true;
+        }
+
+        log.info("Broker config file path is {}, if this file exists on the client side, make sure it is consistent with the server configuration.", brokerConfigPath);
+        Properties props;
+        try {
+            props = Utils.loadProps(brokerConfigPath);
+            String security = props.getProperty(VerifyClientVersionEnableProp);
+            log.info("Broker property {} is: {}.", VerifyClientVersionEnableProp, security);
+            return Boolean.parseBoolean(security);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(e.getMessage());
+        }
+    }
+
     public static boolean enableSecurity() {
         String brokerCfg = "config/server.properties";
         URL url = getDefaultClassLoader().getResource(brokerCfg);
         if (url == null) {
-            String expectedResPath = getDefaultClassLoader().getResource("").getPath() + brokerCfg;
+            URL rootPath = getDefaultClassLoader().getResource("");
+            String runtimePath = "";
+            if (rootPath != null) {
+                // FileLoader
+                runtimePath = rootPath.getPath() + brokerCfg;
+            } else {
+                // JarLoader
+                runtimePath = getRuntimePath() + "!/" + brokerCfg;
+            }
             // Consider as client side if 'config/server.properties' not found in current thread classloader (default: use security request header).
-            log.warn(String.format("Classpath resource %s does not exist, it can be ignored as client side which consider using security request header.", expectedResPath));
+            log.warn(String.format("Classpath resource '%s' does not exist, it can be ignored as client side which consider using security request header.", runtimePath));
             return true;
         }
-        String brokerCfgPath = url.getPath();
-        log.info("Broker config path is: " + brokerCfgPath);
+        log.info("Broker config path is: " + url.getPath());
+        Properties props = new Properties();
         try {
-            Properties props = Utils.loadProps(brokerCfgPath);
-            String securityStr = props.getProperty(VerifyClientVersionEnableProp);
-            log.info("Broker config 'verify.client.version.enable' is: " + securityStr);
-            return Boolean.parseBoolean(securityStr);
+            InputStream in = url.openStream();
+            props.load(in);
+            String securityKey = props.getProperty(VerifyClientVersionEnableProp);
+            log.info("Broker config 'verify.client.version.enable' is: " + securityKey);
+            return Boolean.parseBoolean(securityKey);
         } catch (IOException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
     }
 
     public static ClassLoader getDefaultClassLoader() {
-      ClassLoader cl = null;
-      try {
-          cl = Thread.currentThread().getContextClassLoader();
-      } catch (Exception ex) {
-          // Cannot access thread context ClassLoader - falling back to system class loader.
-      }
-      if (cl == null) {
-          // No thread context class loader -> use class loader of this class.
-          cl = RequestHeader.class.getClassLoader();
-      }
-      return cl;
+        ClassLoader cl = null;
+        try {
+            cl = Thread.currentThread().getContextClassLoader();
+        } catch (Exception ex) {
+            // Cannot access thread context ClassLoader - falling back to system class loader.
+        }
+        if (cl == null) {
+            // No thread context class loader -> use class loader of this class.
+            cl = RequestHeader.class.getClassLoader();
+        }
+        return cl;
+    }
+
+    /**
+     * Get runtime classpath which inspired by: https://www.jianshu.com/p/b8e331840961.
+     * @return current classpath
+     */
+    private static String getRuntimePath() {
+        String classPath = RequestHeader.class.getName().replaceAll("\\.", "/") + ".class";
+        URL resource = RequestHeader.class.getClassLoader().getResource(classPath);
+        if (resource == null) {
+            return null;
+        }
+        String urlString = resource.toString();
+        int insidePathIndex = urlString.indexOf('!');
+        boolean isInJar = insidePathIndex > -1;
+        if (isInJar) {
+            urlString = urlString.substring(urlString.indexOf("file:"), insidePathIndex);
+            return urlString;
+        }
+        return urlString.substring(urlString.indexOf("file:"), urlString.length() - classPath.length());
     }
 
 }

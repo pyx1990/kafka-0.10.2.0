@@ -25,6 +25,7 @@ import kafka.network.{RequestOrResponseSend, RequestChannel}
 import kafka.network.RequestChannel.Response
 import kafka.utils.Logging
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
+import org.apache.kafka.common.requests.RequestHeader
 
 object ControlledShutdownRequest extends Logging {
   val CurrentVersion = 1.shortValue
@@ -34,6 +35,10 @@ object ControlledShutdownRequest extends Logging {
     val versionId = buffer.getShort
     val correlationId = buffer.getInt
     val clientId = if (versionId > 0) Some(readShortString(buffer)) else None
+    if (RequestHeader.isSecure) {
+      val clientVersion = if (versionId > 0) Some(readShortString(buffer)) else None
+      info("Security request headers are used, client version is: " + clientVersion.get)
+    }
     val brokerId = buffer.getInt
     new ControlledShutdownRequest(versionId, correlationId, clientId, brokerId)
   }
